@@ -90,10 +90,12 @@ public class UserService {
         }
 
         User newUser = toDocument(request);
+        newUser.setEmailVerified(true);
 
         userRepository.save(newUser);
 
-        sendVerificationEmail(newUser);
+//        sendVerificationEmail(newUser); RENDER and BREVO not able to connect, so skip it for now
+        
 
         return toResponse(newUser);
     }
