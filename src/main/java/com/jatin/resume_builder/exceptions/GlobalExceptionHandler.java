@@ -9,8 +9,12 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
+
+import lombok.extern.slf4j.Slf4j;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
@@ -40,9 +44,19 @@ public class GlobalExceptionHandler {
 		
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
 	}
+
+	@ExceptionHandler(ResponseStatusException.class)
+	public ResponseEntity<Map<String, Object>> handleResponseStatusException(ResponseStatusException ex) {
+		Map<String, Object> response = new HashMap<>();
+		response.put("message", ex.getReason() != null ? ex.getReason() : "Request failed");
+		response.put("status", ex.getStatusCode().value());
+
+		return ResponseEntity.status(ex.getStatusCode()).body(response);
+	}
 	
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex){
+		log.error("Unhandled exception", ex);
 		
 		Map<String, Object> response = new HashMap<>();
 		response.put("message", "Something went wrong. Contact admin");

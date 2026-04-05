@@ -1,7 +1,6 @@
 package com.jatin.resume_builder.controller;
 
 import java.io.IOException;
-import java.security.DrbgParameters.Reseed;
 import java.util.List;
 import java.util.Map;
 
@@ -18,14 +17,16 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
+
 import com.jatin.resume_builder.document.Resume;
+import com.jatin.resume_builder.document.User;
 import com.jatin.resume_builder.dto.CreateResumeRequest;
 import com.jatin.resume_builder.service.FileUploadService;
 import com.jatin.resume_builder.service.ResumeService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.HttpServlet;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,28 +40,72 @@ public class ResumeController {
 
 	private final ResumeService resumeService;
 	private final FileUploadService fileUploadService;
+
+	private String extractAuthenticatedEmail(Authentication authentication) {
+		if (authentication == null || !authentication.isAuthenticated()) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User is not authenticated");
+		}
+
+		Object principal = authentication.getPrincipal();
+		if (principal instanceof User user && user.getEmail() != null && !user.getEmail().isBlank()) {
+			return user.getEmail();
+		}
+
+		String authName = authentication.getName();
+		if (authName != null && !authName.isBlank() && !"anonymousUser".equalsIgnoreCase(authName)) {
+			return authName;
+		}
+
+		throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated user email is missing");
+	}
+
+	private User extractAuthenticatedUser(Authentication authentication) {
+		if (authentication == null || !authentication.isAuthenticated()) {
+			throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User is not authenticated");
+		}
+
+		Object principal = authentication.getPrincipal();
+		if (principal instanceof User user) {
+			return user;
+		}
+
+		throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication context");
+	}
 	
 	@PostMapping
 	@Operation(summary = "Create Resume")
 	public ResponseEntity<?> createResume(@Valid @RequestBody CreateResumeRequest request, Authentication authentication){
-		
-		Resume resume = resumeService.createResume(request, authentication.getPrincipal());
+		User user = extractAuthenticatedUser(authentication);
+		log.info("Creating resume for userId={}", user.getId());
+		Resume resume = resumeService.createResume(request, user);
 		
 		return ResponseEntity.status(HttpStatus.CREATED).body(resume);
+	}
+
+	@GetMapping("/new")
+	@Operation(summary = "Create and return draft resume")
+	public ResponseEntity<?> createDraftResume(Authentication authentication) {
+		String userEmail = extractAuthenticatedEmail(authentication);
+		log.info("Creating draft resume for userEmail={}", userEmail);
+		Resume draft = resumeService.createDraftResume(userEmail);
+		return ResponseEntity.status(HttpStatus.CREATED).body(draft);
 	}
 	
 	@GetMapping
 	@Operation(summary = "Get All Resumes")
 	public ResponseEntity<?> getUserResumes(Authentication authentication){
-		List<Resume> resumes = resumeService.getUserResumes(authentication.getPrincipal());
+		User user = extractAuthenticatedUser(authentication);
+		List<Resume> resumes = resumeService.getUserResumes(user);
 		
 		return ResponseEntity.ok(resumes);
 	}
 
-	@GetMapping("/{id}")
+	@GetMapping("/{id:[a-fA-F0-9]{24}}")
 	@Operation(summary = "Get Resume by UserId")
 	public ResponseEntity<?> getResumeById(@PathVariable String id, Authentication authentication){
-		Resume resume = resumeService.getResumeById(id, authentication.getPrincipal());
+		User user = extractAuthenticatedUser(authentication);
+		log.info("Fetching resumeId={} for userId={}", id, user.getId());
+		Resume resume = resumeService.getResumeById(id, user);
 		
 		return ResponseEntity.ok(resume);
 	} 
@@ -68,7 +113,8 @@ public class ResumeController {
 	@PutMapping("/{id}")
 	@Operation(summary = "Update Resume")
 	public ResponseEntity<?> updateResume(@PathVariable String id, @RequestBody Resume updatedResume, Authentication authentication){
-		Resume resume = resumeService.updateResume(id, updatedResume, authentication.getPrincipal());
+		User user = extractAuthenticatedUser(authentication);
+		Resume resume = resumeService.updateResume(id, updatedResume, user);
 		
 		return ResponseEntity.ok(resume);
 	}
@@ -80,8 +126,9 @@ public class ResumeController {
 												@RequestPart(value="profileImage", required=false) MultipartFile profileImage,
 												Authentication authentication) throws IOException{
 	
+		User user = extractAuthenticatedUser(authentication);
 		// call file service method
-		Map<String, String> response = fileUploadService.uploadResumeImages(id, authentication.getPrincipal(), thumbnail, profileImage);
+		Map<String, String> response = fileUploadService.uploadResumeImages(id, user, thumbnail, profileImage);
 		
 		return ResponseEntity.ok(response);
 	}
@@ -89,7 +136,8 @@ public class ResumeController {
 	@DeleteMapping("/{id}")
 	@Operation(summary = "Delete Resume")
 	public ResponseEntity<?> deleteResume(@PathVariable String id, Authentication authentication){
-		resumeService.deleteResume(id, authentication.getPrincipal());
+		User user = extractAuthenticatedUser(authentication);
+		resumeService.deleteResume(id, user);
 		
 		return ResponseEntity.ok(Map.of("message", "Resume deleted Successfully"));
 	}

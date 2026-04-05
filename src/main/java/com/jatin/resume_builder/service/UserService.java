@@ -4,10 +4,12 @@ import java.time.Instant;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.jatin.resume_builder.document.User;
 import com.jatin.resume_builder.dto.AuthResponse;
@@ -156,7 +158,14 @@ public class UserService {
     }
 
     public AuthResponse getProfile(Object principalObject) {
-        User existingUser = (User)principalObject;
+        if (!(principalObject instanceof User existingUser)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication context");
+        }
+
+        if (existingUser.getId() == null || existingUser.getId().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated user id is missing");
+        }
+
         return toResponse(existingUser);
     }
     

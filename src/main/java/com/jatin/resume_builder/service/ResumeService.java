@@ -1,25 +1,26 @@
 package com.jatin.resume_builder.service;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.jatin.resume_builder.document.Resume;
+import com.jatin.resume_builder.document.User;
 import com.jatin.resume_builder.dto.AuthResponse;
 import com.jatin.resume_builder.dto.CreateResumeRequest;
 import com.jatin.resume_builder.repository.ResumeRepository;
+import com.jatin.resume_builder.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class ResumeService {
 	private final ResumeRepository resumeRepository;
+	private final UserRepository userRepository;
 	private final UserService userService;
 	
 	private void setDefaultResumeData(Resume newResume) {
@@ -38,6 +39,9 @@ public class ResumeService {
 
 	
 	public Resume createResume(CreateResumeRequest request, Object principalObject) {
+		if (request == null || request.getTitle() == null || request.getTitle().isBlank()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Resume title is required");
+		}
 	
 		// create resume object
 		Resume newResume = new Resume();
@@ -47,13 +51,30 @@ public class ResumeService {
 		
 		// update resume
 		newResume.setUserId(response.getId());
-		newResume.setTitle(request.getTitle());
+		newResume.setTitle(request.getTitle().trim());
 		
 		// set default data for resume
 		setDefaultResumeData(newResume);
 		
 		// save data to db
 		return resumeRepository.save(newResume);
+	}
+
+	public Resume createDraftResume(String userEmail) {
+		if (userEmail == null || userEmail.isBlank()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Authenticated user email is required");
+		}
+
+		User existingUser = userRepository.findByEmail(userEmail)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+		Resume draft = new Resume();
+		draft.setUserId(existingUser.getId());
+		draft.setTitle("Untitled Resume");
+
+		setDefaultResumeData(draft);
+
+		return resumeRepository.save(draft);
 	}
 
 
@@ -70,12 +91,16 @@ public class ResumeService {
 
 
 	public Resume getResumeById(String resumeId, Object principal) {
+		if (resumeId == null || resumeId.isBlank()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Resume id is required");
+		}
+
 		// get profile
 		AuthResponse response = userService.getProfile(principal);
 		
 		// call repository to get resume details
 		Resume resume = resumeRepository.findByUserIdAndId(response.getId(), resumeId)
-												  .orElseThrow(() -> new RuntimeException("Resume not found"));
+											  .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Resume not found"));
 		
 		// return result
 		return resume;
@@ -83,11 +108,15 @@ public class ResumeService {
 
 
 	public Resume updateResume(String resumeId, Resume updatedResume, Object principal) {
+		if (updatedResume == null) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Resume payload is required");
+		}
+
 		// get profile
 		AuthResponse response = userService.getProfile(principal);
 		
 		Resume existingResume = resumeRepository.findByUserIdAndId(response.getId(), resumeId)
-				  .orElseThrow(() -> new RuntimeException("Resume not found"));
+				  .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Resume not found"));
 		
 		 	existingResume.setTitle(updatedResume.getTitle());
 		    existingResume.setThumbnailLink(updatedResume.getThumbnailLink());
